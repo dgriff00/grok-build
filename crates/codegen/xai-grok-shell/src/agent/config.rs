@@ -3956,6 +3956,21 @@ impl ModelEntry {
     pub fn has_own_credentials(&self) -> bool {
         self.own_credential().is_some()
     }
+
+    /// Local-only: a non-empty, non-denied `base_url` is enough to skip cloud
+    /// OAuth (llama.cpp / Ollama typically need no API key). Always `false`
+    /// when the `local-only` feature is off.
+    pub fn allows_unauthenticated_local_inference(&self) -> bool {
+        #[cfg(feature = "local-only")]
+        {
+            crate::util::ensure_inference_url_allowed(&self.info.base_url).is_ok()
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
+            let _ = self;
+            false
+        }
+    }
 }
 impl std::ops::Deref for ModelEntry {
     type Target = ModelInfo;

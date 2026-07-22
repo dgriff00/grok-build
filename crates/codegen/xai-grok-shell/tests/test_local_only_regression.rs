@@ -262,6 +262,83 @@ async fn no_auth_local_turn() {
     );
 }
 
+/// 6b. Auth method list for a local `base_url` model has no interactive login
+/// and advertises `xai.api_key` so the TUI skips the OAuth splash.
+#[test]
+#[serial]
+fn local_base_url_auth_methods_skip_oauth_splash() {
+    use xai_grok_shell::agent::auth_method::{
+        AuthMethodKind, AuthMethodsBuildInputs, XAI_API_KEY_ENV_VAR, XAI_API_KEY_METHOD_ID,
+        build_auth_methods, should_advertise_xai_api_key,
+    };
+    use xai_grok_shell::agent::config::resolve_model_list;
+
+    let _a = EnvGuard::unset(XAI_API_KEY_ENV_VAR);
+    let _b = EnvGuard::unset("GROK_CODE_XAI_API_KEY");
+
+    let toml: toml::Value = toml::from_str(
+        r#"
+        [models]
+        default = "local-qwen"
+
+        [model.local-qwen]
+        model = "qwen2.5-coder-14b"
+        base_url = "http://127.0.0.1:8080/v1"
+        api_backend = "chat_completions"
+        context_window = 32768
+        "#,
+    )
+    .unwrap();
+    let cfg = Config::new_from_toml_cfg(&toml).expect("config should parse");
+    let models = resolve_model_list(&cfg, None);
+    let model = models.get("local-qwen").expect("local model");
+    assert!(
+        model.allows_unauthenticated_local_inference(),
+        "local base_url must allow unauthenticated inference"
+    );
+    assert!(!model.has_own_credentials());
+
+    let has_external_api_key = should_advertise_xai_api_key(false, models.values());
+    assert!(has_external_api_key);
+
+    let built = build_auth_methods(AuthMethodsBuildInputs {
+        has_external_api_key,
+        has_cached_token: false,
+        has_enterprise_oidc: false,
+        enterprise_oidc_issuer: None,
+        login_label: None,
+        has_auth_provider_command: false,
+        preferred_method: None,
+    });
+    assert_eq!(
+        built.methods.len(),
+        1,
+        "expected only xai.api_key, got {:?}",
+        built
+            .methods
+            .iter()
+            .map(|m| m.id().0.as_ref())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        AuthMethodKind::from_id(built.methods[0].id()),
+        AuthMethodKind::XaiApiKey
+    );
+    assert_eq!(
+        built
+            .default_auth_method_id
+            .as_ref()
+            .map(|id| id.0.as_ref()),
+        Some(XAI_API_KEY_METHOD_ID)
+    );
+    assert!(
+        !built
+            .methods
+            .iter()
+            .any(|m| AuthMethodKind::from_id(m.id()).needs_interactive_login())
+    );
+}
+
 /// 7. Repo collectors stay stubbed in source (compile-time tripwire).
 #[test]
 fn repo_collectors_remain_unavailable() {

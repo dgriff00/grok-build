@@ -49,6 +49,9 @@ pub fn has_xai_api_key_env() -> bool {
 /// exist (no global `XAI_API_KEY`). Deferring it made BYOK users hit the login
 /// screen because the pager uses `auth_methods.first()` for startup metadata.
 ///
+/// Under `local-only`, a model with an allowed local `base_url` (no API key)
+/// also counts — so Ollama / llama.cpp configs skip the dead-end OAuth splash.
+///
 /// [`build_auth_methods`] consumes this predicate and pins the ordering;
 /// its tests catch call-site and predicate regressions.
 ///
@@ -67,7 +70,19 @@ where
     if disable_api_key_auth {
         return false;
     }
-    has_xai_api_key_env() || models.into_iter().any(ModelEntry::has_own_credentials)
+    if has_xai_api_key_env() {
+        return true;
+    }
+    #[cfg(feature = "local-only")]
+    {
+        models.into_iter().any(|m| {
+            m.has_own_credentials() || m.allows_unauthenticated_local_inference()
+        })
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
+        models.into_iter().any(ModelEntry::has_own_credentials)
+    }
 }
 
 /// Inputs to [`build_auth_methods`].
@@ -269,18 +284,34 @@ fn push_interactive_login(
     login_label: Option<&str>,
     has_auth_provider_command: bool,
 ) {
-    if has_enterprise_oidc {
-        // Caller invariant: `enterprise_oidc_issuer` MUST be `Some(...)` when
-        // `has_enterprise_oidc` is true. Production callers derive both from
-        // the same `cfg.grok_com_config.oidc` Option, so the inconsistent
-        // `(true, None)` combination is a programmer error -- panic loudly
-        // (matches the original `cfg.grok_com_config.oidc.as_ref().unwrap()`
-        // call in `MvpAgent::initialize()` before this refactor).
-        let issuer = enterprise_oidc_issuer
-            .expect("enterprise_oidc_issuer is required when has_enterprise_oidc is true");
-        methods.push(oidc_auth_method(issuer, login_label));
-    } else {
-        methods.push(grok_com_auth_method(login_label, has_auth_provider_command));
+    // Local-only builds have no OAuth2/OIDC bake-in; advertising grok.com /
+    // oidc only leads to the dead-end "No OAuth2 configuration" splash.
+    #[cfg(feature = "local-only")]
+    {
+        let _ = (
+            methods,
+            has_enterprise_oidc,
+            enterprise_oidc_issuer,
+            login_label,
+            has_auth_provider_command,
+        );
+        return;
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
+        if has_enterprise_oidc {
+            // Caller invariant: `enterprise_oidc_issuer` MUST be `Some(...)` when
+            // `has_enterprise_oidc` is true. Production callers derive both from
+            // the same `cfg.grok_com_config.oidc` Option, so the inconsistent
+            // `(true, None)` combination is a programmer error -- panic loudly
+            // (matches the original `cfg.grok_com_config.oidc.as_ref().unwrap()`
+            // call in `MvpAgent::initialize()` before this refactor).
+            let issuer = enterprise_oidc_issuer
+                .expect("enterprise_oidc_issuer is required when has_enterprise_oidc is true");
+            methods.push(oidc_auth_method(issuer, login_label));
+        } else {
+            methods.push(grok_com_auth_method(login_label, has_auth_provider_command));
+        }
     }
 }
 
@@ -685,13 +716,28 @@ mod tests {
     /// advertised, and the pager will (correctly) show the login screen.
     /// `default_auth_method_id` is None so the pager falls back to the
     /// advertised login method.
+    ///
+    /// Under `local-only`, interactive login is not advertised (OAuth is
+    /// disabled); the methods list is empty until a local `base_url` model
+    /// makes `xai.api_key` advertiseable.
     #[test]
     fn fresh_user_only_advertises_grok_com_and_requires_login() {
         let built = build_auth_methods(default_inputs());
 
-        assert_eq!(first_kind(&built.methods), Some(AuthMethodKind::GrokCom));
-        assert!(built.default_auth_method_id.is_none());
-        assert_eq!(built.methods.len(), 1);
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert_eq!(first_kind(&built.methods), Some(AuthMethodKind::GrokCom));
+            assert!(built.default_auth_method_id.is_none());
+            assert_eq!(built.methods.len(), 1);
+        }
+        #[cfg(feature = "local-only")]
+        {
+            assert!(
+                built.methods.is_empty(),
+                "local-only must not advertise grok.com when nothing is configured"
+            );
+            assert!(built.default_auth_method_id.is_none());
+        }
     }
 
     /// Enterprise OIDC replaces `grok.com` (mutually exclusive). xai.api_key,
@@ -708,26 +754,38 @@ mod tests {
         let built = build_auth_methods(inputs);
 
         assert_eq!(first_kind(&built.methods), Some(AuthMethodKind::XaiApiKey));
-        assert!(
-            built
-                .methods
-                .iter()
-                .any(|m| AuthMethodKind::from_id(m.id()) == AuthMethodKind::Oidc),
-            "oidc must be advertised when has_enterprise_oidc",
-        );
-        assert!(
-            !built
-                .methods
-                .iter()
-                .any(|m| AuthMethodKind::from_id(m.id()) == AuthMethodKind::GrokCom),
-            "grok.com and oidc are mutually exclusive",
-        );
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert!(
+                built
+                    .methods
+                    .iter()
+                    .any(|m| AuthMethodKind::from_id(m.id()) == AuthMethodKind::Oidc),
+                "oidc must be advertised when has_enterprise_oidc",
+            );
+            assert!(
+                !built
+                    .methods
+                    .iter()
+                    .any(|m| AuthMethodKind::from_id(m.id()) == AuthMethodKind::GrokCom),
+                "grok.com and oidc are mutually exclusive",
+            );
+        }
+        #[cfg(feature = "local-only")]
+        {
+            assert_eq!(
+                built.methods.len(),
+                1,
+                "local-only must not advertise oidc/grok.com interactive login"
+            );
+        }
     }
 
     /// `has_auth_provider_command` is plumbed through to the `grok.com` method
     /// as `meta.external_provider = true`. Pinning this here so the pager's
     /// `AuthStartMode::Command` path keeps working.
     #[test]
+    #[cfg(not(feature = "local-only"))]
     fn auth_provider_command_sets_external_provider_meta() {
         let inputs = AuthMethodsBuildInputs {
             has_auth_provider_command: true,
@@ -790,22 +848,44 @@ mod tests {
             Some(vec![TEST_ENV_VAR])
         );
 
-        // Without the env var present, has_own_credentials() returns false,
-        // the predicate returns false, and the builder advertises only the
-        // login method. Confirms the predicate isn't trivially true.
+        // Without the env var present, has_own_credentials() returns false.
+        // Cloud builds: predicate false → only login method.
+        // Local-only: allowed base_url alone advertises xai.api_key (no OAuth).
         {
             let _unset = EnvGuard::unset(TEST_ENV_VAR);
             let has_external_api_key = should_advertise_xai_api_key(false, models.values());
-            assert!(!has_external_api_key);
-            let built = build_auth_methods(AuthMethodsBuildInputs {
-                has_external_api_key,
-                ..default_inputs()
-            });
-            assert_ne!(
-                first_kind(&built.methods),
-                Some(AuthMethodKind::XaiApiKey),
-                "without env_key resolved, xai.api_key must NOT be advertised first",
-            );
+            #[cfg(not(feature = "local-only"))]
+            {
+                assert!(!has_external_api_key);
+                let built = build_auth_methods(AuthMethodsBuildInputs {
+                    has_external_api_key,
+                    ..default_inputs()
+                });
+                assert_ne!(
+                    first_kind(&built.methods),
+                    Some(AuthMethodKind::XaiApiKey),
+                    "without env_key resolved, xai.api_key must NOT be advertised first",
+                );
+            }
+            #[cfg(feature = "local-only")]
+            {
+                assert!(
+                    has_external_api_key,
+                    "local-only: allowed base_url must advertise xai.api_key without a key"
+                );
+                let built = build_auth_methods(AuthMethodsBuildInputs {
+                    has_external_api_key,
+                    ..default_inputs()
+                });
+                assert_eq!(first_kind(&built.methods), Some(AuthMethodKind::XaiApiKey));
+                assert!(
+                    !built
+                        .methods
+                        .iter()
+                        .any(|m| AuthMethodKind::from_id(m.id()).needs_interactive_login()),
+                    "local-only must not advertise interactive login"
+                );
+            }
         }
 
         // With the env var present (the actual enterprise scenario), the predicate
@@ -884,12 +964,22 @@ mod tests {
                 .any(|m| AuthMethodKind::from_id(m.id()) == AuthMethodKind::XaiApiKey),
             "xai.api_key must not be advertised when disable_api_key_auth is set",
         );
-        assert_eq!(
-            first_kind(&built.methods),
-            Some(AuthMethodKind::GrokCom),
-            "with api-key auth disabled and no cached token, the login method \
-             must lead so the pager requires interactive login",
-        );
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert_eq!(
+                first_kind(&built.methods),
+                Some(AuthMethodKind::GrokCom),
+                "with api-key auth disabled and no cached token, the login method \
+                 must lead so the pager requires interactive login",
+            );
+        }
+        #[cfg(feature = "local-only")]
+        {
+            assert!(
+                built.methods.is_empty(),
+                "local-only + disable_api_key_auth: no methods (no interactive fallback)"
+            );
+        }
         assert!(built.default_auth_method_id.is_none());
     }
 
@@ -1043,11 +1133,21 @@ mod tests {
             has_cached_token: mgr.current().is_some(),
             ..default_inputs()
         });
-        assert_eq!(
-            first_kind(&built.methods),
-            Some(AuthMethodKind::GrokCom),
-            "no cached token AND no api key: pager must show login (grok.com first)",
-        );
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert_eq!(
+                first_kind(&built.methods),
+                Some(AuthMethodKind::GrokCom),
+                "no cached token AND no api key: pager must show login (grok.com first)",
+            );
+        }
+        #[cfg(feature = "local-only")]
+        {
+            assert!(
+                built.methods.is_empty(),
+                "local-only: no grok.com when nothing is configured"
+            );
+        }
     }
 
     // ── preferred_method pin (fail-closed) ──────────────────────────────
@@ -1084,10 +1184,17 @@ mod tests {
             preferred_method: Some(PreferredAuthMethod::Oidc),
             ..default_inputs()
         });
-        assert_eq!(
-            method_ids(&built),
-            vec![CACHED_TOKEN_AUTH_METHOD_ID, GROK_COM_METHOD_ID]
-        );
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert_eq!(
+                method_ids(&built),
+                vec![CACHED_TOKEN_AUTH_METHOD_ID, GROK_COM_METHOD_ID]
+            );
+        }
+        #[cfg(feature = "local-only")]
+        {
+            assert_eq!(method_ids(&built), vec![CACHED_TOKEN_AUTH_METHOD_ID]);
+        }
         assert_eq!(default_id(&built), Some(CACHED_TOKEN_AUTH_METHOD_ID));
     }
 
@@ -1099,7 +1206,62 @@ mod tests {
             preferred_method: Some(PreferredAuthMethod::Oidc),
             ..default_inputs()
         });
-        assert_eq!(method_ids(&built), vec![GROK_COM_METHOD_ID]);
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert_eq!(method_ids(&built), vec![GROK_COM_METHOD_ID]);
+        }
+        #[cfg(feature = "local-only")]
+        {
+            assert!(built.methods.is_empty());
+        }
         assert!(built.default_auth_method_id.is_none());
+    }
+
+    /// Local-only README path: model with `base_url` only (no api_key) must
+    /// advertise `xai.api_key` first and never `grok.com`, so the pager skips
+    /// the OAuth splash.
+    #[test]
+    #[serial]
+    #[cfg(feature = "local-only")]
+    fn local_base_url_without_key_skips_oauth_login() {
+        let _global = EnvGuard::unset(XAI_API_KEY_ENV_VAR);
+        let _legacy = EnvGuard::unset(LEGACY_XAI_API_KEY_ENV_VAR);
+
+        let toml: toml::Value = toml::from_str(
+            r#"
+            [models]
+            default = "local-qwen"
+
+            [model.local-qwen]
+            model = "qwen2.5-coder-14b"
+            base_url = "http://127.0.0.1:8080/v1"
+            api_backend = "chat_completions"
+            context_window = 32768
+            "#,
+        )
+        .unwrap();
+        let cfg = Config::new_from_toml_cfg(&toml).expect("config should parse");
+        let models = resolve_model_list(&cfg, None);
+        let model = models.get("local-qwen").expect("local model");
+        assert!(!model.has_own_credentials());
+        assert!(model.allows_unauthenticated_local_inference());
+
+        let has_external_api_key = should_advertise_xai_api_key(false, models.values());
+        assert!(has_external_api_key);
+
+        let built = build_auth_methods(AuthMethodsBuildInputs {
+            has_external_api_key,
+            has_cached_token: false,
+            ..default_inputs()
+        });
+        assert_eq!(method_ids(&built), vec![XAI_API_KEY_METHOD_ID]);
+        assert_eq!(default_id(&built), Some(XAI_API_KEY_METHOD_ID));
+        assert!(
+            !built
+                .methods
+                .iter()
+                .any(|m| AuthMethodKind::from_id(m.id()).needs_interactive_login()),
+            "local-only must not advertise interactive login when a local base_url is set",
+        );
     }
 }

@@ -455,6 +455,24 @@ async fn run_auth_flow_inner(
     code_rx: Option<mpsc::Receiver<String>>,
     login_override: LoginTransportOverride,
 ) -> anyhow::Result<(GrokAuth, bool)> {
+    #[cfg(feature = "local-only")]
+    {
+        let _ = (
+            auth_manager,
+            grok_com_config,
+            reauth,
+            force_interactive,
+            on_stderr,
+            url_tx,
+            code_rx,
+            login_override,
+        );
+        anyhow::bail!(
+            "Login is disabled in this local-only build. Configure a local model `base_url` instead of xAI cloud auth."
+        );
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
     tracing::info!(
         has_oidc = grok_com_config.oidc.is_some(),
         has_oauth2 = grok_com_config.oauth2.is_some(),
@@ -663,6 +681,7 @@ async fn run_auth_flow_inner(
     anyhow::bail!(
         "No OAuth2 configuration available. Run `grok login` to authenticate, or contact your administrator if you use enterprise SSO."
     )
+    } // cfg(not(feature = "local-only"))
 }
 
 /// Non-interactive auth refresh: returns valid credentials if available without
