@@ -10,6 +10,8 @@ authors = ["xAI"]
 default = []
 default-bazel = []
 memory-log = []
+# Local-only fork: force telemetry off; ignore bake-in env (see later PRs).
+local-only = ["xai-grok-env/local-only", "xai-file-utils/local-only"]
 
 [dependencies]
 anyhow = { workspace = true }

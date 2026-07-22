@@ -1,3 +1,7 @@
 /target
 **/*.rs.bk
 .DS_Store
+
+# Local toolchain homes (dev machine)
+.cargo/
+.rustup/
