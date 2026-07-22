@@ -3739,6 +3739,9 @@ pub async fn connect_local_workspace(
     })?;
     let api_base_url = std::env::var("GROK_CLI_CHAT_PROXY_BASE_URL")
         .unwrap_or_else(|_| "https://cli-chat-proxy.grok.com/v1".to_string());
+    #[cfg(feature = "local-only")]
+    let data_collection_disabled = true;
+    #[cfg(not(feature = "local-only"))]
     let data_collection_disabled =
         std::env::var("GROK_WORKSPACE_DATA_COLLECTION_DISABLED").as_deref() != Ok("false");
     let mut factory = WorkspaceSessionContextFactory::with_auth(auth.clone(), api_base_url.clone());

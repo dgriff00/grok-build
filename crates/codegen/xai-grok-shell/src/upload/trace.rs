@@ -25,6 +25,14 @@ pub(crate) fn spawn_trace_upload<T: Serialize + Send + 'static>(
     payload: &T,
     artifact_tracker: Option<super::manifest::ArtifactTracker>,
 ) {
+    #[cfg(feature = "local-only")]
+    {
+        let _ = (gcs_config, filename, payload, artifact_tracker);
+        tracing::debug!("local-only: skipping cloud trace upload");
+        return;
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
     let Some(prefix) = gcs_config.gcs_prefix.as_deref() else {
         tracing::debug!("Skipping request upload: gcs_prefix is not set");
         return;
@@ -74,6 +82,7 @@ pub(crate) fn spawn_trace_upload<T: Serialize + Send + 'static>(
             }
         }
     });
+    } // cfg(not(feature = "local-only"))
 }
 /// Upload the canonical tool definitions trace and wait for completion.
 ///
@@ -1201,6 +1210,11 @@ pub(crate) fn spawn_startup_spill_reconcile(
     grok_home: std::path::PathBuf,
     queue: Option<UploadQueue>,
 ) {
+    #[cfg(feature = "local-only")]
+    let queue = {
+        let _ = queue;
+        None
+    };
     if !claim_spill_reconcile(&SPILL_RECONCILE_STATE, queue.is_some()) {
         return;
     }

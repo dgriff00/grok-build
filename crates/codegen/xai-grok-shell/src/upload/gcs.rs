@@ -148,6 +148,14 @@ pub(crate) async fn upload_to_auth_diagnostics(
     upload_method: &crate::session::repo_changes::UploadMethod,
     auth_manager: Arc<crate::auth::AuthManager>,
 ) {
+    #[cfg(feature = "local-only")]
+    {
+        let _ = (log_bytes, user_id, upload_method, auth_manager);
+        tracing::debug!("local-only: skipping auth-diagnostics upload");
+        return;
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
     let user_id = user_id.replace('/', "_");
     let ts = chrono::Utc::now().timestamp_millis();
     let version = xai_grok_version::VERSION;
@@ -181,4 +189,5 @@ pub(crate) async fn upload_to_auth_diagnostics(
             );
         }
     }
+    } // cfg(not(feature = "local-only"))
 }
