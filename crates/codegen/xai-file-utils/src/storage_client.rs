@@ -2370,7 +2370,7 @@ pub struct MultipartCompleteResponse {
     pub generation: i64,
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "local-only")))]
 mod download_blob_tests {
     use super::StorageClient;
     use axum::{Router, response::IntoResponse, routing::get};
@@ -2475,7 +2475,7 @@ mod download_blob_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "local-only")))]
 mod batch_check_exists_tests {
     use super::{ExistsResult, StorageClient};
     use axum::{Router, response::IntoResponse, routing::post};
@@ -2684,7 +2684,7 @@ mod batch_check_exists_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "local-only")))]
 mod check_exists_tests {
     //! Mirrors `batch_check_exists_tests` so the singular `check_exists` has
     //! the same coverage of Found / NotFound / Unauthorized / ProbeFailed
@@ -2808,7 +2808,7 @@ mod check_exists_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "local-only")))]
 mod batch_upload_tests {
     use super::StorageClient;
     use axum::{Router, response::IntoResponse, routing::post};
@@ -3124,7 +3124,7 @@ mod batch_upload_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "local-only")))]
 mod batch_upload_json_tests {
     use super::StorageClient;
     use axum::{Router, response::IntoResponse, routing::post};
@@ -3344,7 +3344,7 @@ mod batch_upload_json_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "local-only")))]
 mod forbidden_tests {
     use super::*;
     use axum::{Router, response::IntoResponse, routing::post};
@@ -3506,6 +3506,66 @@ mod forbidden_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "local-only")))]
 #[path = "storage_client_breaker_tests.rs"]
 mod breaker_tests;
+
+#[cfg(all(test, feature = "local-only"))]
+mod local_only_regression_tests {
+    use super::{ExistsResult, LOCAL_ONLY_STORAGE_MSG, StorageClient};
+    use axum::{Router, response::IntoResponse, routing::any};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::net::TcpListener;
+
+    async fn counting_listener() -> (std::net::SocketAddr, Arc<AtomicUsize>) {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_filter = hits.clone();
+        let router = Router::new().fallback(any(move || {
+            let hits = hits_filter.clone();
+            async move {
+                hits.fetch_add(1, Ordering::SeqCst);
+                (axum::http::StatusCode::OK, "unreachable").into_response()
+            }
+        }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        (addr, hits)
+    }
+
+    #[tokio::test]
+    async fn storage_methods_perform_zero_http() {
+        let (addr, hits) = counting_listener().await;
+        let client = StorageClient::new(&format!("http://{addr}/v1"), "token");
+
+        let err = client.get_upload_limits().await.unwrap_err();
+        assert!(err.to_string().contains(LOCAL_ONLY_STORAGE_MSG));
+
+        assert!(matches!(
+            client.check_exists("a").await,
+            ExistsResult::ProbeFailed
+        ));
+        assert!(matches!(
+            client.batch_check_exists(&["a".to_string()]).await,
+            ExistsResult::ProbeFailed
+        ));
+
+        let upload_err = client
+            .upload("a", b"x", "text/plain")
+            .await
+            .unwrap_err();
+        assert!(upload_err.to_string().contains(LOCAL_ONLY_STORAGE_MSG));
+
+        assert!(
+            client
+                .batch_upload(vec![("a".into(), b"x".to_vec(), "text/plain".into())])
+                .await
+                .is_none()
+        );
+
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+    }
+}
