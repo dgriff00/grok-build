@@ -360,7 +360,10 @@ pub(crate) async fn spawn_session_actor(
     let web_search_config = if disable_web_search {
         xai_grok_tools::implementations::WebSearchConfig::Disabled
     } else if let Some(cfg) = web_search_sampling_config {
-        if let Some(api_key) = cfg.api_key {
+        if let Err(msg) = crate::util::ensure_inference_url_allowed(&cfg.base_url) {
+            tracing::warn!(error = %msg, "web_search disabled: base_url denied or unset");
+            xai_grok_tools::implementations::WebSearchConfig::Disabled
+        } else if let Some(api_key) = cfg.api_key {
             xai_grok_tools::implementations::WebSearchConfig::Enabled {
                 api_key,
                 base_url: cfg.base_url,

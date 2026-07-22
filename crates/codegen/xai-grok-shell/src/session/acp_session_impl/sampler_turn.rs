@@ -513,7 +513,7 @@ impl SessionActor {
             Some(self.max_retries),
         );
         let model = cfg.model.clone();
-        let client = xai_grok_sampler::SamplingClient::new(cfg)
+        let client = crate::sampling::new_client(cfg)
             .map_err(|e| {
                 tracing::warn!(
                     error = % e,
@@ -536,7 +536,7 @@ impl SessionActor {
         let mut full_config = self.reconstruct_full_config().await;
         full_config.force_http1 = force_http1;
         let sampling_client =
-            xai_grok_sampler::SamplingClient::new(full_config).map_err(|e| self.to_acp_error(e))?;
+            crate::sampling::new_client(full_config).map_err(|e| self.to_acp_error(e))?;
         Ok(sampling_client)
     }
     /// Push a fresh `SamplerConfig` into the per-session sampler actor

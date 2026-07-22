@@ -5,3 +5,4 @@
 # Local toolchain homes (dev machine)
 .cargo/
 .rustup/
+.tools/

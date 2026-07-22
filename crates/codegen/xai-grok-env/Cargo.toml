@@ -10,6 +10,9 @@ description = "Backend environment presets for the Grok CLI crate family: endpoi
 default-bazel = []
 # Local-only fork: empty / unused production endpoint strings (see later PRs).
 local-only = []
+# Expose `EnvVarGuard` to downstream crates' test builds (cfg(test) on this
+# crate does not apply when it is a dependency of another crate's tests).
+test-support = []
 
 [dependencies]
 tracing = { workspace = true }

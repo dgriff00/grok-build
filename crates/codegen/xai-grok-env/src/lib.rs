@@ -19,6 +19,17 @@ pub struct GrokBuildEndpoints {
     pub gateway_ws_url: &'static str,
     pub ws_origin: &'static str,
 }
+#[cfg(feature = "local-only")]
+const PRODUCTION_ENDPOINTS: GrokBuildEndpoints = GrokBuildEndpoints {
+    // Local-only builds must not bake cloud hosts; configure a local model
+    // `base_url` instead.
+    cli_chat_proxy_base_url: "",
+    asset_server_url: "",
+    relay_ws_url: "",
+    gateway_ws_url: "",
+    ws_origin: "",
+};
+#[cfg(not(feature = "local-only"))]
 const PRODUCTION_ENDPOINTS: GrokBuildEndpoints = GrokBuildEndpoints {
     cli_chat_proxy_base_url: "https://cli-chat-proxy.grok.com/v1",
     asset_server_url: "https://assets.grok.com",
@@ -97,21 +108,21 @@ impl std::fmt::Display for GrokBuildEnvironment {
     }
 }
 /// Serializes env-var mutation across tests; `std::env` is process-global.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner())
 }
 /// RAII env-var override for tests: constructors snapshot the prior value
 /// under [`ENV_LOCK`], `Drop` restores it, panics included.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub struct EnvVarGuard {
     key: &'static str,
     prev: Option<String>,
     _lock: std::sync::MutexGuard<'static, ()>,
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl EnvVarGuard {
     pub fn set(key: &'static str, value: &str) -> Self {
         let lock = env_lock();
@@ -138,7 +149,7 @@ impl EnvVarGuard {
         unsafe { std::env::set_var(self.key, value) };
     }
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Drop for EnvVarGuard {
     fn drop(&mut self) {
         match self.prev.take() {
@@ -180,12 +191,23 @@ mod tests {
     }
     /// Guards against conflating the relay and gateway endpoints (a relay
     /// loop mistakenly connecting to `wss://grok.com/ws/gw/`).
+    #[cfg(not(feature = "local-only"))]
     #[test]
     fn relay_and_gateway_urls_are_distinct() {
         assert_ne!(
             GrokBuildEnvironment::Production.relay_ws_url(),
             GrokBuildEnvironment::Production.gateway_ws_url(),
         );
+    }
+    #[cfg(feature = "local-only")]
+    #[test]
+    fn local_only_production_endpoints_are_empty() {
+        let ep = GrokBuildEnvironment::Production.endpoints();
+        assert!(ep.cli_chat_proxy_base_url.is_empty());
+        assert!(ep.asset_server_url.is_empty());
+        assert!(ep.relay_ws_url.is_empty());
+        assert!(ep.gateway_ws_url.is_empty());
+        assert!(ep.ws_origin.is_empty());
     }
     #[test]
     fn test_from_flags() {
