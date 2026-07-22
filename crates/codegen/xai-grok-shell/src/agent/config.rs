@@ -2097,20 +2097,27 @@ impl Config {
         Resolved::new(TelemetryMode::Disabled, ConfigSource::Default)
     }
     pub(crate) fn resolve_trace_upload(&self) -> Resolved<bool> {
-        let mode = self.resolve_telemetry_mode();
-        let ff = if mode.value.is_disabled() {
-            None
-        } else {
-            self.remote_settings
-                .as_ref()
-                .and_then(|s| s.trace_upload_enabled)
-        };
-        BoolFlag::env("GROK_TELEMETRY_TRACE_UPLOAD")
-            .requirement(self.requirements.trace_upload.pinned())
-            .config(self.telemetry.trace_upload)
-            .feature_flag(ff)
-            .default(mode.value.is_enabled())
-            .resolve()
+        #[cfg(feature = "local-only")]
+        {
+            return Resolved::new(false, ConfigSource::Default);
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
+            let mode = self.resolve_telemetry_mode();
+            let ff = if mode.value.is_disabled() {
+                None
+            } else {
+                self.remote_settings
+                    .as_ref()
+                    .and_then(|s| s.trace_upload_enabled)
+            };
+            BoolFlag::env("GROK_TELEMETRY_TRACE_UPLOAD")
+                .requirement(self.requirements.trace_upload.pinned())
+                .config(self.telemetry.trace_upload)
+                .feature_flag(ff)
+                .default(mode.value.is_enabled())
+                .resolve()
+        }
     }
     /// Resolve jemalloc heap-profile config from stored remote settings + gates.
     pub fn resolve_jemalloc_heap_profile(
@@ -8150,6 +8157,7 @@ reasoning_effort = "low"
         assert!(!r.value, "telemetry off must force trace upload off");
         assert!(!cfg.is_trace_upload_enabled());
     }
+    #[cfg(not(feature = "local-only"))]
     #[test]
     #[serial]
     fn resolve_trace_upload_explicit_config_wins_over_telemetry_off() {
@@ -8170,6 +8178,24 @@ reasoning_effort = "low"
             .pin(true, crate::config::RequirementSource::Unknown);
         assert!(cfg.resolve_trace_upload().value);
     }
+    #[cfg(feature = "local-only")]
+    #[test]
+    #[serial]
+    fn resolve_trace_upload_always_off_in_local_only() {
+        unsafe { std::env::remove_var("GROK_TELEMETRY_ENABLED") };
+        unsafe { std::env::remove_var("GROK_TELEMETRY_TRACE_UPLOAD") };
+        let mut cfg = Config::default();
+        cfg.features.telemetry = Some(TelemetryMode::Enabled);
+        cfg.telemetry.trace_upload = Some(true);
+        cfg.remote_settings = Some(crate::util::config::RemoteSettings {
+            trace_upload_enabled: Some(true),
+            ..Default::default()
+        });
+        let r = cfg.resolve_trace_upload();
+        assert!(!r.value);
+        assert_eq!(r.source, ConfigSource::Default);
+    }
+    #[cfg(not(feature = "local-only"))]
     #[test]
     #[serial]
     fn trace_upload_decision_debug_reports_winning_source() {
@@ -8193,6 +8219,7 @@ reasoning_effort = "low"
         assert_eq!(d["trace_upload_source"], serde_json::json!("config"));
         assert_eq!(d["in_cfg_telemetry_trace_upload"], serde_json::json!(true));
     }
+    #[cfg(not(feature = "local-only"))]
     #[test]
     #[serial]
     fn resolve_trace_upload_honors_config_when_telemetry_on() {

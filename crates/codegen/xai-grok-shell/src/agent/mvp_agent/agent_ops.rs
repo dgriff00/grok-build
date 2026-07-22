@@ -2093,6 +2093,12 @@ impl MvpAgent {
     pub(super) fn diagnostic_upload_config(
         &self,
     ) -> Option<crate::auth::DiagnosticUploader> {
+        #[cfg(feature = "local-only")]
+        {
+            return None;
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
         self.sync_collection_config_gate();
         let cfg = self.cfg.borrow();
         if !cfg.is_trace_upload_enabled() {
@@ -2139,6 +2145,7 @@ impl MvpAgent {
                 })
             }),
         )
+        } // cfg(not(feature = "local-only"))
     }
     /// Like `trace_upload_config`, but also returns the reason why uploads
     /// are enabled/disabled. Used by `get_trace_context` to record
@@ -2150,6 +2157,16 @@ impl MvpAgent {
         crate::upload::turn::TraceUploadReason,
     ) {
         use crate::upload::turn::TraceUploadReason;
+        #[cfg(feature = "local-only")]
+        {
+            crate::upload::trace::spawn_startup_spill_reconcile(
+                crate::util::grok_home::grok_home(),
+                None,
+            );
+            return (None, TraceUploadReason::FeatureOff);
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
         if self.is_data_collection_disabled() {
             crate::upload::trace::spawn_startup_spill_reconcile(
                 crate::util::grok_home::grok_home(),
@@ -2199,6 +2216,7 @@ impl MvpAgent {
         };
         let reason = crate::upload::turn::TraceUploadReason::from_upload_method(&method);
         (method, reason)
+        } // cfg(not(feature = "local-only"))
     }
     /// Resolve client version: prefer the value from the initialize request _meta,
     /// fall back to the agent's own version (VERSION_WITH_COMMIT set by the TUI launcher).

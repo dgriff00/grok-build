@@ -127,6 +127,8 @@ sandbox-enforce = ["xai-grok-sandbox/enforce"]
 default-bazel = [
     "sandbox-enforce",
     ]
+# Local-only fork: never attach a live TraceExportSource / remote upload queue.
+local-only = ["xai-file-utils/local-only"]
 
 [dev-dependencies]
 filetime = { workspace = true }

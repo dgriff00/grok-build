@@ -31,6 +31,42 @@ use xai_grok_auth::AuthCredentialProvider;
 
 use crate::circuit_breaker_observer::TracingObserver;
 
+
+/// Error returned by every StorageClient network method under `local-only`.
+#[cfg(feature = "local-only")]
+pub const LOCAL_ONLY_STORAGE_MSG: &str = "local-only: remote storage uploads are disabled";
+
+#[cfg(feature = "local-only")]
+macro_rules! deny_local_only_result {
+    () => {
+        return Err(anyhow::anyhow!(LOCAL_ONLY_STORAGE_MSG));
+    };
+}
+#[cfg(feature = "local-only")]
+macro_rules! deny_local_only_option {
+    () => {
+        return None;
+    };
+}
+#[cfg(feature = "local-only")]
+macro_rules! deny_local_only_exists {
+    () => {
+        return ExistsResult::ProbeFailed;
+    };
+}
+#[cfg(not(feature = "local-only"))]
+macro_rules! deny_local_only_result {
+    () => {};
+}
+#[cfg(not(feature = "local-only"))]
+macro_rules! deny_local_only_option {
+    () => {};
+}
+#[cfg(not(feature = "local-only"))]
+macro_rules! deny_local_only_exists {
+    () => {};
+}
+
 // ============================================================================
 // Storage Circuit Breaker policy
 // ============================================================================
@@ -596,6 +632,7 @@ impl StorageClient {
     /// Reuses `add_common_headers` for the shared client headers. Returns UploadLimits
     /// struct; 0 = unlimited.
     pub async fn get_upload_limits(&self) -> Result<UploadLimits> {
+        deny_local_only_result!();
         let url = format!("{}/storage/limits", self.base_url);
         let request = self.add_common_headers(self.http_client.get(&url));
 
@@ -640,6 +677,7 @@ impl StorageClient {
     /// GET /v1/storage/exists. 2xx → `Found`; 401/403 → `Unauthorized`;
     /// 404 → `NotFound`; everything else → `ProbeFailed`.
     pub async fn check_exists(&self, path: &str) -> ExistsResult<UploadResponse> {
+        deny_local_only_exists!();
         if self.breaker.check().is_err() {
             return ExistsResult::Unauthorized;
         }
@@ -698,6 +736,7 @@ impl StorageClient {
         &self,
         paths: &[S],
     ) -> ExistsResult<HashSet<String>> {
+        deny_local_only_exists!();
         #[derive(Serialize)]
         struct Request<'a> {
             paths: Vec<&'a str>,
@@ -770,6 +809,7 @@ impl StorageClient {
         &self,
         files: Vec<(String, Vec<u8>, String)>,
     ) -> Option<Vec<prod_mc_cli_chat_proxy_types::BatchUploadResult>> {
+        deny_local_only_option!();
         let url = format!("{}/storage/batch_upload", self.base_url);
         let operation = "batch_upload";
 
@@ -884,6 +924,7 @@ impl StorageClient {
         &self,
         files: Vec<(String, Vec<u8>, String)>,
     ) -> Option<Vec<prod_mc_cli_chat_proxy_types::BatchUploadResult>> {
+        deny_local_only_option!();
         // Short-circuit on empty input: the server rejects empty payloads with
         // a 400, and there are no per-file results to return anyway.
         if files.is_empty() {
@@ -1008,6 +1049,7 @@ impl StorageClient {
     /// restore. Callers should only invoke it when download is permitted for the
     /// current session.
     pub async fn download_blob(&self, storage_path: &str, dest: &Path) -> Result<()> {
+        deny_local_only_result!();
         // Step 1: get a signed GET URL from the proxy.
         let url = format!("{}/storage/download", self.base_url);
         let resp = self
@@ -1139,6 +1181,7 @@ impl StorageClient {
         content: &[u8],
         content_type: &str,
     ) -> Result<UploadResponse> {
+        deny_local_only_result!();
         let url = format!("{}/storage", self.base_url);
         let content = content.to_vec();
         let operation = format!("Upload to '{}'", path);
@@ -1255,6 +1298,7 @@ impl StorageClient {
         file_path: &Path,
         content_type: &str,
     ) -> Result<UploadResponse> {
+        deny_local_only_result!();
         let url = format!("{}/storage", self.base_url);
         let operation = format!("Upload file '{}'", file_path.display());
 
@@ -1382,6 +1426,7 @@ impl StorageClient {
     where
         R: AsyncRead + Send + Sync + 'static,
     {
+        deny_local_only_result!();
         let url = format!("{}/storage", self.base_url);
 
         if let Err(BreakerOpen { retry_after }) = self.breaker.check() {
@@ -1474,6 +1519,7 @@ impl StorageClient {
         content_type: &str,
         options: Option<MultipartUploadOptions>,
     ) -> Result<MultipartCompleteResponse> {
+        deny_local_only_result!();
         let options = options.unwrap_or_default();
 
         // Get file size to calculate parts
@@ -1853,6 +1899,7 @@ impl StorageClient {
         path: &str,
         content_type: &str,
     ) -> Result<prod_mc_cli_chat_proxy_types::SignedUploadUrlResponse> {
+        deny_local_only_result!();
         let url = format!("{}/storage/signed-upload-url", self.base_url);
 
         let response = self
@@ -1898,6 +1945,7 @@ impl StorageClient {
         data: &[u8],
         content_type: &str,
     ) -> Result<()> {
+        deny_local_only_result!();
         let response = self
             .raw_http_client
             .put(signed_url)
@@ -1927,6 +1975,7 @@ impl StorageClient {
         data: &[u8],
         content_type: &str,
     ) -> Result<prod_mc_cli_chat_proxy_types::SignedUploadUrlResponse> {
+        deny_local_only_result!();
         let signed = self.get_signed_upload_url(path, content_type).await?;
         if signed.signed_url.is_empty() {
             return Ok(signed);

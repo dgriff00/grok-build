@@ -15,6 +15,7 @@ local-only = [
     "xai-file-utils/local-only",
     "xai-grok-telemetry/local-only",
     "xai-grok-shell-base/local-only",
+    "xai-grok-workspace/local-only",
 ]
 
 [dependencies]
