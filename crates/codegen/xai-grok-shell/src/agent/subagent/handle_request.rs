@@ -667,7 +667,7 @@ pub(crate) async fn handle_subagent_request(
         depth: 0,
         auth_manager: ctx.auth_manager.clone(),
     };
-    let sampling_client = match crate::sampling::Client::new(
+    let sampling_client = match crate::sampling::new_client(
         effective_sampling_config.clone(),
     ) {
         Ok(c) => c,

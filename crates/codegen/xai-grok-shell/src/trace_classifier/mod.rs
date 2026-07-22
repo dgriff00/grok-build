@@ -1128,7 +1128,7 @@ async fn build_sampler_client(
         max_completion_tokens: Some(LAZINESS_MAX_OUTPUT_TOKENS),
         ..xai_grok_sampler::SamplerConfig::default()
     };
-    xai_grok_sampler::SamplingClient::new(config).map_err(|e| anyhow!("build SamplingClient: {e}"))
+    crate::sampling::new_client(config).map_err(|e| anyhow!("build SamplingClient: {e}"))
 }
 
 /// End-to-end entry point used by the binary. Writes one JSONL line

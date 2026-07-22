@@ -57,7 +57,11 @@ fn matches_trusted_base_url(candidate: &str, trusted_base: &str) -> bool {
 /// optional non-production feature is enabled). When that feature is on,
 /// runtime env overrides can extend this trust set.
 pub fn is_cli_chat_proxy_url(url: &str) -> bool {
-    if matches_trusted_base_url(url, crate::env::PROD_CLI_CHAT_PROXY_BASE_URL) {
+    let trusted = crate::env::PROD_CLI_CHAT_PROXY_BASE_URL;
+    if trusted.is_empty() {
+        return false;
+    }
+    if matches_trusted_base_url(url, trusted) {
         return true;
     }
     false
@@ -74,6 +78,51 @@ pub fn is_first_party_xai_url(url: &str) -> bool {
         .ok()
         .and_then(|u| u.host_str().map(|h| h.to_owned()))
         .is_some_and(|host| host == "x.ai" || host.ends_with(".x.ai"))
+}
+/// True when `url` targets a denied xAI / Grok cloud host (`x.ai`, `*.x.ai`,
+/// `grok.com`, `*.grok.com`) over http/https/ws/wss. Safe against invalid URLs
+/// and suffix attacks (`evil-x.ai.example`, `grok.com.evil.example`).
+pub fn is_denied_cloud_host(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    if !matches!(parsed.scheme(), "http" | "https" | "ws" | "wss") {
+        return false;
+    }
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
+    host == "x.ai"
+        || host.ends_with(".x.ai")
+        || host == "grok.com"
+        || host.ends_with(".grok.com")
+}
+/// Fail-closed inference URL check for local-only builds: require a non-empty
+/// URL and reject denied cloud hosts. No-op when `local-only` is off.
+pub fn ensure_inference_url_allowed(url: &str) -> Result<(), String> {
+    #[cfg(feature = "local-only")]
+    {
+        let trimmed = url.trim();
+        if trimmed.is_empty() {
+            return Err(
+                "configure a local model `base_url` (e.g. http://127.0.0.1:11434/v1); \
+                 xAI cloud is unsupported in this local-only build"
+                    .to_owned(),
+            );
+        }
+        if is_denied_cloud_host(trimmed) {
+            let host = reqwest::Url::parse(trimmed)
+                .ok()
+                .and_then(|u| u.host_str().map(str::to_owned))
+                .unwrap_or_else(|| trimmed.to_owned());
+            return Err(format!(
+                "blocked host `{host}`: *.x.ai and *.grok.com are denied in this local-only build"
+            ));
+        }
+    }
+    let _ = url;
+    Ok(())
 }
 /// Truncate a string to at most `max_chars` characters.
 /// Slices at char boundaries so multi-byte UTF-8 never panics.
@@ -207,11 +256,20 @@ pub fn is_grok_process(pid: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "local-only"))]
     #[test]
     fn test_is_cli_chat_proxy_url_accepts_proxy_subpath() {
         assert!(is_cli_chat_proxy_url(
             "https://cli-chat-proxy.grok.com/v1/chat/completions"
         ));
+    }
+    #[cfg(feature = "local-only")]
+    #[test]
+    fn test_is_cli_chat_proxy_url_rejects_when_prod_empty() {
+        assert!(!is_cli_chat_proxy_url(
+            "https://cli-chat-proxy.grok.com/v1/chat/completions"
+        ));
+        assert!(!is_cli_chat_proxy_url("https://api.x.ai/v1"));
     }
     #[test]
     fn test_is_cli_chat_proxy_url_rejects_public_api() {
@@ -236,6 +294,7 @@ mod tests {
             "https://api.x.ai/v1/chat/completions"
         ));
         assert!(is_first_party_xai_url("https://x.ai"));
+        #[cfg(not(feature = "local-only"))]
         assert!(is_first_party_xai_url(
             "https://cli-chat-proxy.grok.com/v1/chat/completions"
         ));
@@ -249,6 +308,28 @@ mod tests {
         assert!(!is_first_party_xai_url("https://prefixx.ai/v1"));
         assert!(!is_first_party_xai_url("not-a-url"));
         assert!(!is_first_party_xai_url(""));
+    }
+    #[test]
+    fn test_is_denied_cloud_host() {
+        assert!(is_denied_cloud_host("https://api.x.ai/v1"));
+        assert!(is_denied_cloud_host("https://cli-chat-proxy.grok.com/v1"));
+        assert!(is_denied_cloud_host("wss://code.grok.com/ws/code-agent"));
+        assert!(is_denied_cloud_host("https://x.ai"));
+        assert!(is_denied_cloud_host("https://grok.com"));
+        assert!(!is_denied_cloud_host("http://127.0.0.1:11434/v1"));
+        assert!(!is_denied_cloud_host("https://api.openai.com/v1"));
+        assert!(!is_denied_cloud_host("https://api.x.ai.evil.example/v1"));
+        assert!(!is_denied_cloud_host("https://grok.com.evil.example/v1"));
+        assert!(!is_denied_cloud_host("not-a-url"));
+        assert!(!is_denied_cloud_host(""));
+    }
+    #[cfg(feature = "local-only")]
+    #[test]
+    fn test_ensure_inference_url_allowed_local_only() {
+        assert!(ensure_inference_url_allowed("http://127.0.0.1:11434/v1").is_ok());
+        assert!(ensure_inference_url_allowed("").is_err());
+        assert!(ensure_inference_url_allowed("https://api.x.ai/v1").is_err());
+        assert!(ensure_inference_url_allowed("https://cli-chat-proxy.grok.com/v1").is_err());
     }
     #[test]
     fn test_truncate() {

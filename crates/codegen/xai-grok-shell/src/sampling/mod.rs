@@ -30,3 +30,27 @@ pub use xai_grok_sampler::{
     InferenceLatencyStats, OriginClientInfo, RequestId, SamplerActor, SamplerConfig, SamplerHandle,
     SamplingChannel, SamplingClient, SamplingErrorInfo, SamplingErrorKind, SamplingEvent,
 };
+
+/// Construct a sampling client after local-only URL preflight (deny-list +
+/// non-empty `base_url`). Prefer this over bare `SamplingClient::new` in shell.
+pub fn new_client(config: SamplerConfig) -> Result<SamplingClient, SamplingError> {
+    #[cfg(feature = "local-only")]
+    {
+        let trimmed = config.base_url.trim();
+        if trimmed.is_empty() {
+            return Err(SamplingError::InvalidConfiguration(
+                "configure a local model base_url; xAI cloud is unsupported in this local-only build",
+            ));
+        }
+        if crate::util::is_denied_cloud_host(trimmed) {
+            tracing::error!(
+                base_url = %trimmed,
+                "blocked cloud inference URL in local-only build"
+            );
+            return Err(SamplingError::InvalidConfiguration(
+                "blocked cloud host (*.x.ai / *.grok.com) in local-only build",
+            ));
+        }
+    }
+    SamplingClient::new(config)
+}

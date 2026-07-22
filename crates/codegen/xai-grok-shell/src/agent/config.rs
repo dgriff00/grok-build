@@ -43,10 +43,19 @@ pub fn default_agent_type() -> String {
     DEFAULT_AGENT_TYPE.to_owned()
 }
 /// Default base URL for the cli chat proxy.
+#[cfg(feature = "local-only")]
+pub const CLI_CHAT_PROXY_BASE_URL_DEFAULT: &str = "";
+#[cfg(not(feature = "local-only"))]
 pub const CLI_CHAT_PROXY_BASE_URL_DEFAULT: &str = "https://cli-chat-proxy.grok.com/v1";
 /// Default base URL for the public xAI API.
+#[cfg(feature = "local-only")]
+pub const XAI_API_BASE_URL_DEFAULT: &str = "";
+#[cfg(not(feature = "local-only"))]
 pub const XAI_API_BASE_URL_DEFAULT: &str = "https://api.x.ai/v1";
 /// Default base URL for the asset server (profile images, etc.).
+#[cfg(feature = "local-only")]
+pub const ASSET_SERVER_URL_DEFAULT: &str = "";
+#[cfg(not(feature = "local-only"))]
 pub const ASSET_SERVER_URL_DEFAULT: &str = "https://assets.grok.com";
 /// One or more environment variable names that may hold a model API key.
 ///
@@ -303,14 +312,28 @@ impl EndpointsConfig {
     /// OAuth/session inference) resolve: explicit `cli_chat_proxy_base_url`, else
     /// the public default. NEVER falls back to `xai_api_base_url` — that is the
     /// inference endpoint (API-key auth) only.
+    ///
+    /// Under `local-only`, the compiled default is empty — callers must not treat
+    /// an empty return as a usable cloud proxy.
     pub fn proxy_url(&self) -> String {
         blank_as_unset(&self.cli_chat_proxy_base_url)
             .unwrap_or_else(|| CLI_CHAT_PROXY_BASE_URL_DEFAULT.to_owned())
     }
+    /// Inference base URL: explicit `models_base_url`, else the cli-chat-proxy.
+    ///
+    /// Under `local-only`, never falls back to the proxy — returns empty when
+    /// unset so callers fail closed until a local model `base_url` is configured.
     pub fn resolve_inference_base_url(&self) -> String {
-        self.models_base_url
-            .clone()
-            .unwrap_or_else(|| self.proxy_url())
+        #[cfg(feature = "local-only")]
+        {
+            blank_as_unset(&self.models_base_url).unwrap_or_default()
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
+            self.models_base_url
+                .clone()
+                .unwrap_or_else(|| self.proxy_url())
+        }
     }
     /// Feedback endpoint — an auxiliary service, so it defaults to the
     /// cli-chat-proxy, never `xai_api_base_url`.
@@ -4596,6 +4619,14 @@ pub fn sampling_config_for_model(
     deployment_id: Option<String>,
     user_id: Option<String>,
 ) -> SamplerConfig {
+    if let Err(msg) = crate::util::ensure_inference_url_allowed(&credentials.base_url) {
+        tracing::error!(
+            model = %model.info().model,
+            base_url = %credentials.base_url,
+            error = %msg,
+            "local-only: refusing sampling config for denied/missing inference URL"
+        );
+    }
     let info = model.info();
     let model_name = info.model.clone();
     let max_completion_tokens = info.max_completion_tokens;
@@ -7664,6 +7695,8 @@ reasoning_effort = "low"
     /// INVARIANT: auxiliary-service resolvers resolve to the cli-chat-proxy, never
     /// `xai_api_base_url` — overriding ONLY inference keeps every aux endpoint on
     /// the proxy; explicit per-service overrides win verbatim.
+    ///
+    /// Under `local-only`, the compiled proxy default is empty (fail closed).
     #[test]
     #[serial]
     fn aux_endpoints_resolve_to_proxy_never_inference() {
@@ -7676,18 +7709,33 @@ reasoning_effort = "low"
         };
         let proxy = CLI_CHAT_PROXY_BASE_URL_DEFAULT;
         assert_eq!(cfg.proxy_url(), proxy);
-        assert_eq!(cfg.resolve_inference_base_url(), proxy);
-        assert_eq!(cfg.resolve_models_list_url(), format!("{proxy}/models"));
-        assert_eq!(
-            cfg.resolve_managed_config_url(),
-            format!("{proxy}/deployment/config")
-        );
-        assert_eq!(cfg.resolve_feedback_base_url(), proxy);
-        assert_eq!(cfg.resolve_trace_upload_url(), proxy);
-        assert_eq!(
-            cfg.resolve_otlp_traces_endpoint(),
-            format!("{proxy}/traces")
-        );
+        #[cfg(feature = "local-only")]
+        {
+            assert!(
+                proxy.is_empty(),
+                "local-only builds must not bake a cloud proxy default"
+            );
+            assert_eq!(
+                cfg.resolve_inference_base_url(),
+                "",
+                "local-only must not fall back inference to the proxy"
+            );
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert_eq!(cfg.resolve_inference_base_url(), proxy);
+            assert_eq!(cfg.resolve_models_list_url(), format!("{proxy}/models"));
+            assert_eq!(
+                cfg.resolve_managed_config_url(),
+                format!("{proxy}/deployment/config")
+            );
+            assert_eq!(cfg.resolve_feedback_base_url(), proxy);
+            assert_eq!(cfg.resolve_trace_upload_url(), proxy);
+            assert_eq!(
+                cfg.resolve_otlp_traces_endpoint(),
+                format!("{proxy}/traces")
+            );
+        }
         assert_eq!(cfg.xai_api_base_url, inference);
         let overridden = EndpointsConfig {
             cli_chat_proxy_base_url: Some("https://proxy.enterprise.example/v1".to_string()),
@@ -7736,10 +7784,21 @@ reasoning_effort = "low"
         )
         .expect("config should parse");
         assert!(cfg.endpoints.cli_chat_proxy_base_url.is_none());
-        assert_eq!(
-            cfg.endpoints.resolve_managed_config_url(),
-            format!("{CLI_CHAT_PROXY_BASE_URL_DEFAULT}/deployment/config")
-        );
+        #[cfg(feature = "local-only")]
+        {
+            assert_eq!(
+                cfg.endpoints.resolve_managed_config_url(),
+                "/deployment/config",
+                "empty proxy default yields a relative path — cloud managed-config is unused"
+            );
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
+            assert_eq!(
+                cfg.endpoints.resolve_managed_config_url(),
+                format!("{CLI_CHAT_PROXY_BASE_URL_DEFAULT}/deployment/config")
+            );
+        }
         assert!(
             !cfg.endpoints
                 .resolve_managed_config_url()

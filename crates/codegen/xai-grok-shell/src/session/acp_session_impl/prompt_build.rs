@@ -694,7 +694,7 @@ impl SessionActor {
                 self.client_identifier.clone(),
                 Some(self.max_retries),
             );
-        let client = xai_grok_sampler::SamplingClient::new(sampler_config).map_err(|e| {
+        let client = crate::sampling::new_client(sampler_config).map_err(|e| {
             acp::Error::internal_error().data(format!(
                 "failed to build image-describe sampling client: {e}"
             ))
