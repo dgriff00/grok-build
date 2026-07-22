@@ -1316,6 +1316,9 @@ pub struct Config {
     pub endpoints: EndpointsConfig,
     #[serde(default)]
     pub telemetry: TelemetryConfig,
+    /// Opt-in local turn traces under `~/.grok/traces/` (see [`LocalTracesConfig`]).
+    #[serde(default)]
+    pub local_traces: crate::upload::local_traces::LocalTracesConfig,
     /// Session behavior configuration.
     #[serde(default)]
     pub session: SessionConfig,
@@ -1734,6 +1737,7 @@ impl Default for Config {
             toolset: ShellToolsetConfig::default(),
             endpoints,
             telemetry: TelemetryConfig::default(),
+            local_traces: crate::upload::local_traces::LocalTracesConfig::default(),
             session: SessionConfig::default(),
             agent: AgentSelectionConfig::default(),
             repo_changes_dedup: RepoChangesDedupConfig::default(),
