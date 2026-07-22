@@ -188,6 +188,10 @@ pub fn is_xai_oauth2_issuer(issuer: &str) -> bool {
 /// auth.json scope key used by the pre-OIDC `grok login --legacy` flow.
 /// Matches the key format produced by the original `accounts.x.ai` relay auth.
 pub const LEGACY_AUTH_SCOPE: &str = "https://accounts.x.ai/sign-in";
+/// auth.json scope key when neither OIDC nor OAuth2 is configured (local-only
+/// builds). Intentionally distinct from [`LEGACY_AUTH_SCOPE`] so stale cloud
+/// sessions are never adopted.
+pub const LOCAL_ONLY_AUTH_SCOPE: &str = "local-only";
 impl GrokComConfig {
     /// Whether `xai.api_key` auth is disabled. Pinning a team
     /// (`force_login_team_uuid`) implies this — team membership can't be verified
@@ -216,7 +220,7 @@ impl GrokComConfig {
         } else if let Some(ref oauth2) = self.oauth2 {
             oauth2.auth_scope()
         } else {
-            unreachable!("oauth2 config is always present (xAI default or env override)")
+            LOCAL_ONLY_AUTH_SCOPE.to_owned()
         }
     }
 }
@@ -443,5 +447,13 @@ mod tests {
         assert_eq!(cfg.preferred_method, Some(PreferredAuthMethod::Oidc));
         let cfg: GrokComConfig = toml::from_str("").expect("parse empty");
         assert_eq!(cfg.preferred_method, None);
+    }
+    #[cfg(feature = "local-only")]
+    #[test]
+    fn local_only_default_auth_scope_is_sentinel() {
+        let cfg = GrokComConfig::default();
+        assert!(cfg.oidc.is_none());
+        assert!(cfg.oauth2.is_none());
+        assert_eq!(cfg.auth_scope(), LOCAL_ONLY_AUTH_SCOPE);
     }
 }
