@@ -18,6 +18,7 @@ Protocol (ACP).
 
 [Installing the released binary](#installing-the-released-binary) ·
 [Building from source](#building-from-source) ·
+[Local-only fork](#local-only-fork) ·
 [Documentation](#documentation) ·
 [Repository layout](#repository-layout) ·
 [Development](#development) ·
@@ -67,8 +68,104 @@ cargo check -p xai-grok-pager-bin            # fast validation
 ```
 
 The binary artifact is named `xai-grok-pager`; official installs ship it as
-`grok`. On first launch it opens your browser to authenticate — see the
-[authentication guide](crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md).
+`grok`.
+
+> [!NOTE]
+> **This fork defaults to a local-only build** (`local-only` Cargo feature on).
+> It does **not** open a browser for xAI OAuth. Configure a local model
+> `base_url` instead — see [Local-only fork](#local-only-fork). Upstream cloud
+> auth docs remain at
+> [02-authentication.md](crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md)
+> for reference only.
+
+## Local-only fork
+
+This tree ships as a **hybrid local-only** agent: cloud storage uploads,
+telemetry bake-in, auto-update, remote settings fetch, and default xAI OAuth
+are compile-time disabled. Inference stays OpenAI-compatible HTTP so you can
+point at Ollama, llama.cpp, or similar — with a hard deny-list for `*.x.ai` /
+`*.grok.com`.
+
+**Unsupported in this build:** xAI cloud inference, `grok login` / `auth.x.ai`,
+cli-chat-proxy, GCS / `POST /v1/storage` uploads, and Mixpanel/Sentry bake-in.
+
+### Build (defaults are enough)
+
+```sh
+cargo run -p xai-grok-pager-bin
+# or
+cargo build -p xai-grok-pager-bin --release
+```
+
+The `local-only` feature is on by default for `xai-grok-pager-bin` and
+`xai-grok-shell`. Upstream-shaped cloud builds are out of scope for this fork.
+
+### Minimal `~/.grok/config.toml` (Ollama)
+
+Create this **before** first launch. No `auth.json` or `XAI_API_KEY` required.
+
+```toml
+[cli]
+auto_update = false
+
+[features]
+telemetry = false
+remote_fetch = false
+
+[local_traces]
+enabled = false
+
+[models]
+default = "local-qwen"
+
+[model.local-qwen]
+model = "qwen2.5-coder:32b"
+base_url = "http://127.0.0.1:11434/v1"
+api_backend = "chat_completions"
+context_window = 32768
+stream_tool_calls = false
+```
+
+Pull a model and confirm the OpenAI-compatible endpoint:
+
+```sh
+ollama pull qwen2.5-coder:32b
+curl -s http://127.0.0.1:11434/v1/models | head
+```
+
+Then start the TUI (`cargo run -p xai-grok-pager-bin`). Expect traffic only to
+your local `base_url` — not `cli-chat-proxy.grok.com` or `api.x.ai`.
+
+### Opt-in local turn traces
+
+Session resume files under `~/.grok/sessions/` are unchanged. Separately, you
+can enable **local turn traces** (metadata + messages only — never full-repo
+snapshots):
+
+```toml
+[local_traces]
+enabled = true
+# max_bytes_per_session = 104857600   # optional; default 100 MiB
+```
+
+Or set `GROK_LOCAL_TRACES=1`. When enabled, turns land under:
+
+```text
+~/.grok/traces/<session_id>/turn_<n>/
+  metadata.json
+  messages.jsonl
+```
+
+Default remains **off**.
+
+### Related notes
+
+- Security / threat-model research that motivated this fork:
+  [`.cursor/plans/grok_build_security_review_5410264b.plan.md`](.cursor/plans/grok_build_security_review_5410264b.plan.md)
+  — that plan describes **upstream cloud** behavior; for day-to-day use of
+  **this** tree, prefer this README section.
+- Fail-closed regression coverage:
+  `cargo test -p xai-grok-shell --test test_local_only_regression`
 
 ## Documentation
 

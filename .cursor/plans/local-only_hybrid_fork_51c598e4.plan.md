@@ -22,15 +22,15 @@ todos:
     status: completed
   - id: docs
     content: Document local-only build + Ollama config + local_traces in README
-    status: pending
+    status: completed
 isProject: false
 ---
 
 # Local-Only Hybrid Fork
 
-## Progress (paused after PR6)
+## Progress (complete through PR7)
 
-Work is paused after **regression-tests** (PR6). Branches are stacked from `main` @ `3ce74bf` (not yet opened as GitHub PRs — `gh` needs auth). Resume with **docs**.
+All hybrid-fork todos are implemented on stacked `local-only/*` branches. Open / merge PRs manually in order 1→7.
 
 | Todo | Branch | Commit |
 |------|--------|--------|
@@ -39,8 +39,8 @@ Work is paused after **regression-tests** (PR6). Branches are stacked from `main
 | kill-storage | `local-only/kill-storage` | `9f297bb` |
 | kill-control-plane | `local-only/kill-control-plane` | `f571271` |
 | local-traces | `local-only/local-traces` | `323c328` |
-| regression-tests | `local-only/regression-tests` | `28176be` |
-| docs | — | pending |
+| regression-tests | `local-only/regression-tests` | `c8aa06e` |
+| docs | `local-only/docs` | *(this commit)* |
 
 Compare URLs (open PR after `gh auth login`):
 

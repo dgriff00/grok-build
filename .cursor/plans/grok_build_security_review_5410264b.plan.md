@@ -148,6 +148,14 @@ Why uploads can still happen (especially on 0.2.93 / cloud defaults):
 
 ## Hard requirement: refuse cloud collection mode
 
+> **This fork:** default builds already compile out cloud storage, telemetry
+> bake-in, remote settings, auto-update, and OAuth login. Day-to-day setup
+> (Ollama config, `[local_traces]`) lives in the root
+> [README — Local-only fork](../../README.md#local-only-fork). The checklist
+> below remains useful for threat-model context and for verifying a
+> prebuilt/upstream binary; it is **not** the preferred getting-started path
+> for this tree.
+
 Do **not**:
 
 - Run `curl -fsSL https://x.ai/cli/install.sh | bash` or `npm i -g @xai-official/grok` for privacy-sensitive work (unknown compile-time telemetry/bucket defaults)
@@ -164,6 +172,10 @@ Do:
 ---
 
 ## Local-only hardening checklist
+
+> Prefer [README — Local-only fork](../../README.md#local-only-fork) for this
+> repository’s default build. The config below still works and matches the
+> README sample (plus optional env / spill cleanup for extra paranoia).
 
 Create `~/.grok/config.toml` **before first launch**:
 
