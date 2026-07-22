@@ -4,22 +4,22 @@ overview: "Fork Grok Build into a hybrid local-only agent: compile-time kill of 
 todos:
   - id: feature-flag
     content: Add local-only Cargo feature (default on pager-bin + shell); propagate to file-utils, telemetry, update, env
-    status: pending
+    status: completed
   - id: endpoints-denylist
-    content: Nenter baked xAI/grok defaults; fail without local base_url; deny-list *.x.ai / *.grok.com at URL resolve + sampler
-    status: pending
+    content: Neuter baked xAI/grok defaults; fail without local base_url; deny-list *.x.ai / *.grok.com at URL resolve + sampler
+    status: completed
   - id: kill-storage
     content: Stub StorageClient uploads + shell upload/GCS/queue; force trace_upload off; spill purge-only; keep repo collector stubs dead
-    status: pending
+    status: completed
   - id: kill-control-plane
     content: Force telemetry off, remote_fetch off, auto-update no-op, skip OAuth default, disable cloud WS/tools backends
-    status: pending
+    status: completed
   - id: local-traces
     content: Add [local_traces] opt-in writer to ~/.grok/traces/ (metadata + messages only, size-capped)
-    status: pending
+    status: completed
   - id: regression-tests
     content: "Add fail-closed tests: no default cloud hosts, deny-list, zero upload HTTP, opt-in traces, no-auth local turn"
-    status: pending
+    status: completed
   - id: docs
     content: Document local-only build + Ollama config + local_traces in README
     status: pending
@@ -27,6 +27,30 @@ isProject: false
 ---
 
 # Local-Only Hybrid Fork
+
+## Progress (paused after PR6)
+
+Work is paused after **regression-tests** (PR6). Branches are stacked from `main` @ `3ce74bf` (not yet opened as GitHub PRs — `gh` needs auth). Resume with **docs**.
+
+| Todo | Branch | Commit |
+|------|--------|--------|
+| feature-flag | `local-only/feature-flag` | `345448e` |
+| endpoints-denylist | `local-only/endpoints-denylist` | `318d2c5` |
+| kill-storage | `local-only/kill-storage` | `9f297bb` |
+| kill-control-plane | `local-only/kill-control-plane` | `f571271` |
+| local-traces | `local-only/local-traces` | `323c328` |
+| regression-tests | `local-only/regression-tests` | `28176be` |
+| docs | — | pending |
+
+Compare URLs (open PR after `gh auth login`):
+
+- https://github.com/dgriff00/grok-build/pull/new/local-only/feature-flag
+- https://github.com/dgriff00/grok-build/pull/new/local-only/endpoints-denylist
+- https://github.com/dgriff00/grok-build/pull/new/local-only/kill-storage
+- https://github.com/dgriff00/grok-build/pull/new/local-only/kill-control-plane
+- https://github.com/dgriff00/grok-build/pull/new/local-only/local-traces
+
+**Note:** Later branches include earlier commits (stacked). Prefer merge order 1→5 into `main`, or open PRs with base = previous branch.
 
 ## Decisions (locked)
 
