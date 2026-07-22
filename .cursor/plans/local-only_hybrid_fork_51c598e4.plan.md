@@ -40,7 +40,7 @@ All hybrid-fork todos are implemented on stacked `local-only/*` branches. Open /
 | kill-control-plane | `local-only/kill-control-plane` | `f571271` |
 | local-traces | `local-only/local-traces` | `323c328` |
 | regression-tests | `local-only/regression-tests` | `c8aa06e` |
-| docs | `local-only/docs` | *(this commit)* |
+| docs | `local-only/docs` | `bd064fe` |
 
 Compare URLs (open PR after `gh auth login`):
 
