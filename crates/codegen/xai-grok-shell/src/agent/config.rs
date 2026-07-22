@@ -1316,6 +1316,9 @@ pub struct Config {
     pub endpoints: EndpointsConfig,
     #[serde(default)]
     pub telemetry: TelemetryConfig,
+    /// Opt-in local turn traces under `~/.grok/traces/` (see [`LocalTracesConfig`]).
+    #[serde(default)]
+    pub local_traces: crate::upload::local_traces::LocalTracesConfig,
     /// Session behavior configuration.
     #[serde(default)]
     pub session: SessionConfig,
@@ -1734,6 +1737,7 @@ impl Default for Config {
             toolset: ShellToolsetConfig::default(),
             endpoints,
             telemetry: TelemetryConfig::default(),
+            local_traces: crate::upload::local_traces::LocalTracesConfig::default(),
             session: SessionConfig::default(),
             agent: AgentSelectionConfig::default(),
             repo_changes_dedup: RepoChangesDedupConfig::default(),
@@ -1785,7 +1789,7 @@ impl Default for Config {
             subagent_toggle: std::collections::HashMap::new(),
             subagent_roles: std::collections::HashMap::new(),
             subagent_personas: std::collections::HashMap::new(),
-            disable_web_search: false,
+            disable_web_search: cfg!(feature = "local-only"),
             todo_gate: false,
             laziness_debug_log: None,
             respect_gitignore: false,
@@ -2075,6 +2079,13 @@ impl Config {
         self.resolve_two_pass_compaction().value
     }
     pub(crate) fn resolve_telemetry_mode(&self) -> Resolved<TelemetryMode> {
+        #[cfg(feature = "local-only")]
+        {
+            let _ = self;
+            return Resolved::new(TelemetryMode::Disabled, ConfigSource::Default);
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
         if let Some(mode) = self.requirements.telemetry.pinned() {
             return Resolved::new(mode, ConfigSource::Requirement);
         }
@@ -2095,6 +2106,7 @@ impl Config {
             }
         }
         Resolved::new(TelemetryMode::Disabled, ConfigSource::Default)
+        }
     }
     pub(crate) fn resolve_trace_upload(&self) -> Resolved<bool> {
         #[cfg(feature = "local-only")]
@@ -2637,10 +2649,18 @@ impl Config {
     ///
     /// Priority: `--oauth` > GROK_OAUTH_ENABLED env > default (true = OAuth).
     pub fn resolve_grok_oauth(&self, cli_oidc: Option<bool>) -> Resolved<bool> {
-        BoolFlag::env("GROK_OAUTH_ENABLED")
-            .cli(cli_oidc)
-            .default(true)
-            .resolve()
+        #[cfg(feature = "local-only")]
+        {
+            let _ = (self, cli_oidc);
+            return Resolved::new(false, ConfigSource::Default);
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
+            BoolFlag::env("GROK_OAUTH_ENABLED")
+                .cli(cli_oidc)
+                .default(true)
+                .resolve()
+        }
     }
     /// Resolve whether to spawn the per-`Ready`-client transport
     /// liveness pollers and the session-actor `StatusDispatcher`.

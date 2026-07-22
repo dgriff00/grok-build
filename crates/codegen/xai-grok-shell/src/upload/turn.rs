@@ -181,6 +181,22 @@ pub(crate) async fn complete_prompt_trace(
     };
     let upload_method = resolve_upload_method(&ctx);
     let method_str = upload_method.as_str();
+    // Opt-in local turn writer (replaces GCS for local debugging; default off).
+    {
+        let local_cfg = crate::upload::local_traces::load_config();
+        let messages_jsonl = turn_messages.as_ref().map(|cap| {
+            crate::upload::local_traces::messages_to_jsonl(&cap.messages)
+        });
+        if let Err(e) = crate::upload::local_traces::write_turn_trace(
+            &crate::util::grok_home::grok_home(),
+            &local_cfg,
+            ctx.session_info.id.0.as_ref(),
+            ctx.turn_number,
+            messages_jsonl.as_deref(),
+        ) {
+            tracing::warn!(error = %e, "local_traces: failed to write turn files");
+        }
+    }
     xai_grok_telemetry::session_ctx::log_session_event(
         crate::agent::session_metrics::TraceUploadAttempted {
             session_id: ctx.session_info.id.0.to_string(),

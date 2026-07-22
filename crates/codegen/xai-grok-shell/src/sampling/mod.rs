@@ -33,7 +33,7 @@ pub use xai_grok_sampler::{
 
 /// Construct a sampling client after local-only URL preflight (deny-list +
 /// non-empty `base_url`). Prefer this over bare `SamplingClient::new` in shell.
-pub fn new_client(config: SamplerConfig) -> Result<SamplingClient, SamplingError> {
+pub fn new_client(config: SamplerConfig) -> std::result::Result<SamplingClient, SamplingError> {
     #[cfg(feature = "local-only")]
     {
         let trimmed = config.base_url.trim();

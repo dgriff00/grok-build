@@ -38,6 +38,12 @@ pub fn resolve_zdr_access_enabled(
 /// what is unreachable when this knob is needed (firewalled / air-gapped
 /// deployments), and an env var would be one more way to re-arm the fetches.
 pub fn resolve_remote_fetch_enabled() -> bool {
+    #[cfg(feature = "local-only")]
+    {
+        return false;
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
     match crate::config::ConfigLayers::load() {
         Ok(layers) => remote_fetch_enabled_from_layers(&layers),
         // The full-layer load is all-or-nothing, but the policy tiers load
@@ -50,6 +56,7 @@ pub fn resolve_remote_fetch_enabled() -> bool {
             crate::config::load_managed_config().ok().as_ref(),
             crate::config::load_system_managed_config().ok().as_ref(),
         ),
+    }
     }
 }
 

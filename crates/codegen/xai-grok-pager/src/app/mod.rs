@@ -167,23 +167,40 @@ pub(crate) fn voice_mode_enabled() -> bool {
 /// default (on). Free-tier SuperGrok upsell for `/voice` / Ctrl+Space is a
 /// separate gate (`is_voice_tier_restricted`).
 pub(crate) fn resolve_voice_mode_enabled(env: Option<bool>, remote: Option<bool>) -> bool {
-    env.or(remote).unwrap_or(true)
+    #[cfg(feature = "local-only")]
+    {
+        let _ = (env, remote);
+        return false;
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
+        env.or(remote).unwrap_or(true)
+    }
 }
 #[cfg(test)]
 mod voice_gate_tests {
     use super::resolve_voice_mode_enabled;
+    #[cfg(not(feature = "local-only"))]
     #[test]
     fn voice_defaults_on_when_env_and_remote_absent() {
         assert!(resolve_voice_mode_enabled(None, None));
+    }
+    #[cfg(feature = "local-only")]
+    #[test]
+    fn voice_defaults_off_in_local_only() {
+        assert!(!resolve_voice_mode_enabled(None, None));
+        assert!(!resolve_voice_mode_enabled(Some(true), Some(true)));
     }
     #[test]
     fn voice_remote_false_is_kill_switch() {
         assert!(!resolve_voice_mode_enabled(None, Some(false)));
     }
+    #[cfg(not(feature = "local-only"))]
     #[test]
     fn voice_remote_true_enables() {
         assert!(resolve_voice_mode_enabled(None, Some(true)));
     }
+    #[cfg(not(feature = "local-only"))]
     #[test]
     fn voice_env_overrides_remote_kill_switch() {
         assert!(resolve_voice_mode_enabled(Some(true), Some(false)));
