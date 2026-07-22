@@ -1958,6 +1958,13 @@ fn build_update_config() -> UpdateConfig {
 /// Centralized gate for all auto-update checks. Add new suppression
 /// rules here — not at each call site.
 fn should_check_for_updates(no_auto_update_flag: bool) -> bool {
+    #[cfg(feature = "local-only")]
+    {
+        let _ = no_auto_update_flag;
+        return false;
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
     if cfg!(debug_assertions) {
         return false;
     }
@@ -1968,6 +1975,7 @@ fn should_check_for_updates(no_auto_update_flag: bool) -> bool {
         return false;
     }
     true
+    }
 }
 /// Mode-gate for the direct stdio agent's background auto-update.
 ///
@@ -2002,6 +2010,14 @@ async fn run_update_command(
     channel_switch: Option<&str>,
     base_update_config: &UpdateConfig,
 ) -> Result<()> {
+    #[cfg(feature = "local-only")]
+    {
+        let _ = (check, json, force_reinstall, version, channel_switch, base_update_config);
+        println!("Auto-update is disabled in this local-only build.");
+        return Ok(());
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
     if json && !check {
         anyhow::bail!("--json requires --check");
     }
@@ -2034,6 +2050,7 @@ async fn run_update_command(
         signal_leaders_to_relaunch(&installed_version).await;
     }
     Ok(())
+    } // cfg(not(feature = "local-only"))
 }
 /// After a successful `grok update`, ask any running leader on this machine that
 /// is older than `installed_version` to relaunch onto the new binary (bounded

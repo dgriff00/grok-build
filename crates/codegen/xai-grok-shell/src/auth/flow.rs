@@ -869,6 +869,16 @@ pub async fn run_cli_login(
     device_auth: bool,
     devbox: bool,
 ) -> anyhow::Result<()> {
+    #[cfg(feature = "local-only")]
+    {
+        let _ = (config, oauth, device_auth, devbox);
+        println!(
+            "Login is disabled in this local-only build. Configure a local model `base_url` instead of xAI cloud auth."
+        );
+        return Ok(());
+    }
+    #[cfg(not(feature = "local-only"))]
+    {
     let login_override = LoginTransportOverride::from_flags(oauth, device_auth);
 
     // Mirror `run_auth_flow_inner`'s precedence: enterprise OIDC (oidc=Some,
@@ -939,6 +949,7 @@ pub async fn run_cli_login(
         _ => {}
     }
     Ok(())
+    } // cfg(not(feature = "local-only"))
 }
 
 /// Result of a logout operation. Used by both the CLI subcommand and

@@ -265,6 +265,28 @@ impl OAuth2ProviderConfig {
 }
 impl Default for GrokComConfig {
     fn default() -> Self {
+        #[cfg(feature = "local-only")]
+        {
+            return Self {
+                grok_ws_origin: String::new(),
+                grok_ws_url: String::new(),
+                token_header: "xai-grok-cli".to_owned(),
+                oidc: None,
+                oauth2: None,
+                auth_provider_command: std::env::var("GROK_AUTH_PROVIDER_COMMAND").ok(),
+                auth_provider_label: std::env::var("GROK_AUTH_PROVIDER_LABEL").ok(),
+                auth_token_ttl: std::env::var("GROK_AUTH_TOKEN_TTL")
+                    .ok()
+                    .and_then(|v| v.parse().ok()),
+                disable_api_key_auth: std::env::var("GROK_DISABLE_API_KEY_AUTH")
+                    .ok()
+                    .map(|v| env_flag_enabled(&v)),
+                force_login_team_uuid: None,
+                preferred_method: None,
+            };
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
         let oidc = OidcAuthConfig::from_env();
         let oauth2 = if oidc.is_some() {
             None
@@ -298,6 +320,7 @@ impl Default for GrokComConfig {
                 .map(|v| env_flag_enabled(&v)),
             force_login_team_uuid: None,
             preferred_method: None,
+        }
         }
     }
 }

@@ -127,6 +127,26 @@ fn build_env_default(value: Option<&'static str>) -> Option<String> {
 }
 impl Default for TelemetryConfig {
     fn default() -> Self {
+        #[cfg(feature = "local-only")]
+        {
+            return Self {
+                enabled: Some(false),
+                events_url: None,
+                events_api_key: None,
+                mixpanel_token: None,
+                mixpanel_enabled: false,
+                trace_upload: Some(false),
+                otel_enabled: None,
+                otel_metrics_exporter: None,
+                otel_logs_exporter: None,
+                otel_endpoint: None,
+                otel_protocol: None,
+                otel_log_user_prompts: None,
+                otel_log_tool_details: None,
+            };
+        }
+        #[cfg(not(feature = "local-only"))]
+        {
         let (baked_url, baked_key, baked_token, baked_enabled) = internal_defaults();
         let build_url = build_env_default(option_env!("GROK_TELEMETRY_BUILD_EVENTS_URL"));
         let build_key = build_env_default(option_env!("GROK_TELEMETRY_BUILD_EVENTS_API_KEY"));
@@ -151,6 +171,7 @@ impl Default for TelemetryConfig {
             otel_protocol: None,
             otel_log_user_prompts: None,
             otel_log_tool_details: None,
+        }
         }
     }
 }
