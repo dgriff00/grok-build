@@ -5,10 +5,17 @@ version = "0.1.220-alpha.4"
 edition.workspace = true
 
 [features]
-default = []
+default = ["local-only"]
 unstable = []
 default-bazel = [
+    "local-only",
     ]
+# Local-only fork: compile-time kill of cloud storage/telemetry/control-plane.
+local-only = [
+    "xai-file-utils/local-only",
+    "xai-grok-telemetry/local-only",
+    "xai-grok-shell-base/local-only",
+]
 
 [dependencies]
 dunce = { workspace = true }

@@ -8,6 +8,8 @@ description = "Backend environment presets for the Grok CLI crate family: endpoi
 [features]
 # single shared rlib per crate, so downstream Bazel test targets need the
 default-bazel = []
+# Local-only fork: empty / unused production endpoint strings (see later PRs).
+local-only = []
 
 [dependencies]
 tracing = { workspace = true }

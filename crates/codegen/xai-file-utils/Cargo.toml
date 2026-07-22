@@ -48,6 +48,8 @@ zstd.workspace = true
 
 [features]
 default-bazel = []
+# Local-only fork: StorageClient upload paths become no-ops (see later PRs).
+local-only = []
 
 
 [dev-dependencies]

@@ -9,6 +9,8 @@ description = "Foundation modules for the grok shell crate family: environment p
 # CI default set: builds a single shared rlib per crate, so downstream test
 # targets need the test-only helper surface compiled in.
 default-bazel = []
+# Local-only fork: empty baked production endpoints in xai-grok-env.
+local-only = ["xai-grok-env/local-only"]
 
 [dependencies]
 anyhow = { workspace = true }

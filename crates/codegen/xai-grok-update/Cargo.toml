@@ -4,6 +4,10 @@ name = "xai-grok-update"
 version = "0.1.220-alpha.4"
 edition.workspace = true
 
+[features]
+# Local-only fork: auto-update checker no-op (see later PRs).
+local-only = ["xai-grok-shell/local-only"]
+
 [dependencies]
 anyhow = { workspace = true }
 futures = { workspace = true }

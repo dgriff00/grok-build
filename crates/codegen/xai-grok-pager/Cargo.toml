@@ -252,3 +252,10 @@ default-bazel = [
 jemalloc = []
 sandbox-enforce = ["xai-grok-sandbox/enforce"]
 release-dist = []
+# Forwarded from xai-grok-pager-bin; enables local-only kill switches downstream.
+local-only = [
+    "xai-grok-shell/local-only",
+    "xai-grok-telemetry/local-only",
+    "xai-grok-update/local-only",
+    "xai-file-utils/local-only",
+]
