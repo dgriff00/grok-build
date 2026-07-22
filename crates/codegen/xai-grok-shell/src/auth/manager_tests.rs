@@ -84,6 +84,7 @@ fn has_usable_token_covers_memory_and_disk() {
     );
 }
 
+#[cfg(not(feature = "local-only"))]
 #[test]
 fn auth_scope_uses_oauth2_when_present() {
     let cfg = GrokComConfig::default();
@@ -96,6 +97,19 @@ fn auth_scope_uses_oauth2_when_present() {
             obfstr::obfstr!("b1a00492-073a-47ea-816f-4c329264a828"),
         )
     );
+}
+
+#[cfg(feature = "local-only")]
+#[test]
+fn local_only_default_auth_manager_constructs() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = GrokComConfig::default();
+    assert_eq!(
+        cfg.auth_scope(),
+        crate::auth::config::LOCAL_ONLY_AUTH_SCOPE
+    );
+    // Must not panic: AuthManager::new calls auth_scope() with both IdPs unset.
+    let _mgr = AuthManager::new(dir.path(), cfg);
 }
 
 #[test]
